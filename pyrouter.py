@@ -1,5 +1,15 @@
 from flask import Flask, request, jsonify
 import requests
+import logging
+import traceback
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename='app.log',
+    filemode='a'
+)
 
 app = Flask(__name__)
 
@@ -23,12 +33,24 @@ def list_forward():
             'Connection': 'keep-alive'
         }
         
-        # 转发请求到目标URL
-        response = requests.get(f'https://hq.sinajs.cn/list={params_str}', headers=headers)
-        
-        # 将GBK编码转换为UTF-8
-        content = response.content.decode('gbk').encode('utf-8')
-        
+        try:
+            # 转发请求到目标URL
+            response = requests.get(f'https://hq.sinajs.cn/list={params_str}', headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            # 将GBK编码转换为UTF-8
+            content = response.content.decode('gbk').encode('utf-8')
+            
+        except requests.exceptions.RequestException as e:
+            logging.error(f"请求失败: {str(e)} - 参数: {params_str}")
+            return jsonify({"error": "上游服务不可用"}), 502
+        except UnicodeDecodeError as e:
+            logging.error(f"解码失败: {str(e)} - 原始内容: {response.content[:100]}")
+            return jsonify({"error": "数据格式错误"}), 500
+        except Exception as e:
+            logging.error(f"未知错误: {str(e)}\n{traceback.format_exc()}")
+            return jsonify({"error": "服务器内部错误"}), 500
+
         # 添加CORS头部
         cors_headers = {
             'Access-Control-Allow-Origin': '*',
